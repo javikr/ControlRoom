@@ -100,84 +100,89 @@ struct Simulator: Identifiable, Comparable, Hashable {
         self.image = typeIdentifier.icon
     }
 
-	func urlForFilePath(_ filePath: FilePathKind) -> URL {
+    func urlForFilePath(_ filePath: FilePathKind) -> URL {
 
-		if filePath == .root {
-			return URL(fileURLWithPath: dataPath)
-		}
+        if filePath == .root {
+            return URL(fileURLWithPath: dataPath)
+        }
 
-		let containerPath = dataPath + "/Containers/Shared/AppGroup/"
+        let containerPath = dataPath + "/Containers/Shared/AppGroup/"
 
-		guard let containerContents = try? FileManager.default.contentsOfDirectory(atPath: containerPath) else {
-			print("could not find any subfolders in '\(containerPath)'")
-			return URL(fileURLWithPath: "")
-		}
+        guard let containerContents = try? FileManager.default.contentsOfDirectory(atPath: containerPath) else {
+            print("could not find any subfolders in '\(containerPath)'")
+            return URL(fileURLWithPath: "")
+        }
 
-		for content in containerContents {
+        for content in containerContents {
 
-			if content.hasSuffix("DS_Store") { continue }
+            if content.hasSuffix("DS_Store") { continue }
 
-			let subDirectoryPath = containerPath + content
-			let plistUrl = URL(fileURLWithPath: subDirectoryPath)
+            let subDirectoryPath = containerPath + content
+            let plistUrl = URL(fileURLWithPath: subDirectoryPath)
 
-			guard let subDirectoryContents = try? FileManager.default.contentsOfDirectory(atPath: subDirectoryPath),
-				  let plistFile = subDirectoryContents.first(where: { $0.hasSuffix("plist")}),
-				  let plistData = try? Data(contentsOf: plistUrl.appendingPathComponent(plistFile)),
-				  let plist = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? NSDictionary else {
-				print("could not find or decode the plist file in '\(subDirectoryPath)'")
-				return URL(fileURLWithPath: "")
-			}
+            guard let subDirectoryContents = try? FileManager.default.contentsOfDirectory(atPath: subDirectoryPath),
+                  let plistFile = subDirectoryContents.first(where: { $0.hasSuffix("plist")}),
+                  let plistData = try? Data(contentsOf: plistUrl.appendingPathComponent(plistFile)),
+                  let plist = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? NSDictionary else {
+                print("could not find or decode the plist file in '\(subDirectoryPath)'")
+                return URL(fileURLWithPath: "")
+            }
 
-			for value in plist.allValues {
-				if let value = value as? String {
-					if value.hasSuffix(filePath.storageType) {
-						return URL(fileURLWithPath: subDirectoryPath).appendingPathComponent("File Provider Storage", isDirectory: true)
-					}
-				}
-			}
-		}
-		print("could not find folder of type '\(filePath)' in '\(containerPath)'")
-		return URL(fileURLWithPath: "")
-	}
+            for value in plist.allValues {
+                if let value = value as? String {
+                    if value.hasSuffix(filePath.storageType) {
+                        return URL(fileURLWithPath: subDirectoryPath).appendingPathComponent("File Provider Storage", isDirectory: true)
+                    }
+                }
+            }
+        }
+        print("could not find folder of type '\(filePath)' in '\(containerPath)'")
+        return URL(fileURLWithPath: "")
+    }
 
-	func copyFilesFromProviders(_ providers: [NSItemProvider], toFilePath filePath: FilePathKind) -> Bool {
-		for provider in providers {
-			provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { (urlData, error) in
-				if let urlData = urlData as? Data {
-					let sourceUrl = NSURL(absoluteURLWithDataRepresentation: urlData, relativeTo: nil) as URL
-					do {
-						try FileManager.default.copyItem(at: sourceUrl, to: urlForFilePath(filePath).appendingPathComponent(sourceUrl.lastPathComponent))
-						NSSound(named: "Glass")?.play()
-					} catch {
-						NSSound(named: "Sosumi")?.play()
-						print(error.localizedDescription)
-					}
-				} else {
-					NSSound(named: "Sosumi")?.play()
-				}
-				sleep(1)	// if multiple files are dropped, allow user to distinguish success/error sounds
-			}
-		}
-		return true
-	}
+    func copyFilesFromProviders(_ providers: [NSItemProvider], toFilePath filePath: FilePathKind) -> Bool {
+        for provider in providers {
+            provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { (urlData, error) in
+                if let urlData = urlData as? Data {
+                    let sourceUrl = NSURL(absoluteURLWithDataRepresentation: urlData, relativeTo: nil) as URL
+                    do {
+                        try FileManager.default.copyItem(at: sourceUrl, to: urlForFilePath(filePath).appendingPathComponent(sourceUrl.lastPathComponent))
+                        NSSound(named: "Glass")?.play()
+                    } catch {
+                        NSSound(named: "Sosumi")?.play()
+                        print(error.localizedDescription)
+                    }
+                } else {
+                    NSSound(named: "Sosumi")?.play()
+                }
+                sleep(1)    // if multiple files are dropped, allow user to distinguish success/error sounds
+            }
+        }
+        return true
+    }
 
-	enum FilePathKind {
-		case root, files // photos is complicated, and you can't just drop files there anyway
+    enum FilePathKind {
+        case root, files // photos is complicated, and you can't just drop files there anyway
 
-		var storageType: String {
-			switch self {
-			case .root:
-				print("Storage type is not applicable to the root path")
-				return ""
-			case .files:
-				return "LocalStorage"
-			}
-		}
-	}
+        var storageType: String {
+            switch self {
+            case .root:
+                print("Storage type is not applicable to the root path")
+                return ""
+            case .files:
+                return "LocalStorage"
+            }
+        }
+    }
 
-    /// Sort simulators alphabetically.
+    /// Sort simulators alphabetically, and then by OS version.
     static func < (lhs: Simulator, rhs: Simulator) -> Bool {
-        lhs.name < rhs.name
+        if lhs.name == rhs.name,
+           let lhsRuntime = lhs.runtime,
+           let rhsRuntime = rhs.runtime {
+            return lhsRuntime.buildversion < rhsRuntime.buildversion
+        }
+        return lhs.name < rhs.name
     }
 
     /// An example simulator for Xcode preview purposes
