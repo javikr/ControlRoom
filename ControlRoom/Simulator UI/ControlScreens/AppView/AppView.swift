@@ -49,6 +49,8 @@ struct AppView: View {
         let apps = applications.filter { $0.type == .user || shouldShowSystemApps }.sorted()
         let selectedApplication = apps.first(where: { $0.bundleIdentifier == lastBundleID }) ?? .default
         let isApplicationSelected = selectedApplication.bundleIdentifier.isNotEmpty
+        let plistFiles = obtainPlistFiles()
+        let appGroupPlistFiles = obtainAppGroupPlistFiles()
 
         return Form {
             Section {
@@ -78,14 +80,30 @@ struct AppView: View {
                         Menu {
                             Button("Open data folder", action: openDataFolder)
                                 .disabled(selectedApplication.dataFolderURL == nil)
-                            Button("Open first app group folder", action: openFirstAppGroupFolder)
-                                .disabled(selectedApplication.firstAppGroupFolderURL == nil)
+                            Button("Open documents folder", action: openDocumentsFolder)
+                                .disabled(selectedApplication.dataFolderURL == nil)
                             Button("Open app bundle", action: openAppBundle)
                                 .disabled(selectedApplication.bundleURL == nil)
-
-                            Button("Edit UserDefaults", action: editUserDefaults)
-                                .disabled(selectedApplication.dataFolderURL == nil)
-
+                            
+                            Menu("Open plists") {
+                                if selectedApplication.firstAppGroupFolderURL != nil {
+                                    Menu("App Groups") {
+                                        ForEach(appGroupPlistFiles, id: \.self) { plistFileName in
+                                            Button(plistFileName) {
+                                                openAppGroupPlist(name: plistFileName)
+                                            }
+                                        }
+                                    }
+                                }
+                                Menu("Defaults") {
+                                    ForEach(plistFiles, id: \.self) { plistFileName in
+                                        Button(plistFileName) {
+                                            openPlist(name: plistFileName)
+                                        }
+                                    }
+                                }
+                            }
+                        
                             Divider()
 
                             Button("Clear Restoration State", action: clearRestorationState)
@@ -190,6 +208,11 @@ struct AppView: View {
 
         try? FileManager.default.removeItem(at: savedAppState)
     }
+    
+    func openDocumentsFolder() {
+        guard let dataFolderURL = selectedApplication.dataFolderURL?.appendingPathComponent("Documents") else { return }
+        NSWorkspace.shared.open(dataFolderURL)
+    }
 
     /// Shows a confirmation alert asking the user if they are sure they want to delete the selected app.
     func confirmDeleteApp() {
@@ -218,6 +241,34 @@ struct AppView: View {
         let plist = preferencesURL.appendingPathComponent("\(selectedApplication.bundleIdentifier).plist")
 
         NSWorkspace.shared.open(plist)
+    }
+    
+    func openAppGroupPlist(name: String) {
+        guard let dataFolderURL = selectedApplication.firstAppGroupFolderURL else { return }
+        let preferencesURL = dataFolderURL.appendingPathComponent("Library/Preferences").appendingPathComponent(name)
+    
+        NSWorkspace.shared.open(preferencesURL)
+    }
+
+    func openPlist(name: String) {
+        guard let dataFolderURL = selectedApplication.dataFolderURL else { return }
+        let preferencesURL = dataFolderURL.appendingPathComponent("Library/Preferences").appendingPathComponent(name)
+    
+        NSWorkspace.shared.open(preferencesURL)
+    }
+    
+    func obtainPlistFiles() -> [String] {
+        guard let dataFolderURL = selectedApplication.dataFolderURL else { return [] }
+        
+        let preferencesURL = dataFolderURL.appendingPathComponent("Library/Preferences")
+        
+        return (try? FileManager.default.contentsOfDirectory(atPath: preferencesURL.path).filter({ $0.hasSuffix("plist") })) ?? []
+    }
+    
+    func obtainAppGroupPlistFiles() -> [String] {
+        guard let firstAppGroupFolderURL = selectedApplication.firstAppGroupFolderURL?.appendingPathComponent("Library/Preferences") else { return [] }
+        
+        return (try? FileManager.default.contentsOfDirectory(atPath: firstAppGroupFolderURL.path).filter({ $0.hasSuffix("plist") })) ?? []
     }
 
     /// Grants some type of permission to the app.
